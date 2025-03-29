@@ -47,6 +47,7 @@ pico_enable_stdio_usb(gamepad2uart 0)
 # Add the standard library to the build
 target_link_libraries(gamepad2uart
     pico_stdlib
+    pico_multicore
     tinyusb_board
     tinyusb_host
 )
@@ -57,6 +58,11 @@ target_include_directories(gamepad2uart PRIVATE
 )
 
 target_include_directories(gamepad2uart PRIVATE ./include)
+
+target_compile_options(gamepad2uart PRIVATE
+    -Wno-narrowing
+    -Wno-shift-count-overflow
+)
 
 pico_add_extra_outputs(gamepad2uart)
 
