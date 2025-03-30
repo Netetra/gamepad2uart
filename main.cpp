@@ -32,14 +32,14 @@ union ButtonsData {
         uint16_t right_shoulder: 1;
         uint16_t left_trigger: 1;
         uint16_t right_trigger: 1;
-        uint16_t select: 1; // 8
-        uint16_t start: 1; // 9
+        uint16_t select: 1;
+        uint16_t start: 1;
         uint16_t left_joystick: 1;
         uint16_t right_joystick: 1;
         uint16_t home: 1;
         uint16_t share: 1;
     };
-    uint16_t raw;
+    uint32_t raw;
 };
 
 
@@ -59,7 +59,7 @@ static uint16_t uart_interval_ms = 250;
 static uint8_t gamepad_dev_addr = 0;
 static uint8_t gamepad_idx = 0;
 static std::unique_ptr<MountedGamepad> p = nullptr;
-static struct GamepadData gamepad_data = { { 0, 0 }, { 0, 0 }, 0, 0, 0, 0};
+static struct GamepadData gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 8 };
 
 
 static uint8_t crc8(uint8_t *data, uint8_t len) {
@@ -114,8 +114,7 @@ static void core1_main() {
                 payload_len++;
                 payload[payload_len] = data[i] ^ SBTP_XOR_BYTE;
                 payload_len++;
-            }
-            else {
+            } else {
                 payload[payload_len] = data[i];
                 payload_len++;
             }
@@ -124,9 +123,11 @@ static void core1_main() {
         uint8_t frame[DATA_LEN * 2];
         frame[0] = SBTP_HEADER_BYTE;
         frame[1] = payload_len;
+
         for (uint8_t i = 0; i < payload_len; i++) {
             frame[2 + i] = payload[i];
         }
+
         frame[2 + payload_len] = crc8(payload, payload_len);
         frame[3 + payload_len] = SBTP_FOOTER_BYTE;
 
@@ -262,7 +263,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
     hid::Int32ArrayRef axes_ref = p->axes.Ref();
     hid::GamepadConfig cfg;
     hid::Collection *cfg_root = cfg.Init(&buttons_ref, &axes_ref);
-
+    
     int result = p->parser.Init(cfg_root, desc_report, desc_len);
 
     if (result) {
@@ -290,14 +291,12 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
     gamepad_dev_addr = 0;
     gamepad_idx = 0;
     p.reset();
-    gamepad_data = { { 0, 0 }, { 0, 0 }, 0, 0, 0, 0};
+    gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 8 };
 }
 
 
 void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t idx, uint8_t const *report, uint16_t len) {
     if (gamepad_dev_addr != dev_addr || gamepad_idx != idx) { return; } // ゲームパッド以外のデバイス
-
-    board_led_write(true);
 
     int result = p->parser.Parse(report, len);
     if (result) {
@@ -313,14 +312,16 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t idx, uint8_t const *re
     struct JoyStickData right_joystick = { rx - 128, ry - 128 };
 
     union ButtonsData buttons;
-    buttons.raw = p->buttons.Flags<uint16_t>(0);
+    buttons.raw = p->buttons.Flags<uint32_t>(0);
 
     uint8_t left_trigger = p->axes[hid::GamepadConfig::RX];
     uint8_t right_trigger = p-> axes[hid::GamepadConfig::RY];
 
     uint8_t dpad = p->axes[hid::GamepadConfig::HAT_SWITCH];
 
-    gamepad_data = { left_joystick, right_joystick, buttons, left_trigger, right_trigger, dpad };
+    if (7 < dpad) {
+        dpad = 8;
+    }
 
-    board_led_write(false);
+    gamepad_data = { left_joystick, right_joystick, buttons, left_trigger, right_trigger, dpad };
 }

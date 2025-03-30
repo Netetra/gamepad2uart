@@ -715,6 +715,8 @@ namespace {
 		if (IsOutOfRange(v, logical_min, logical_max)) {
 			if (relative)
 				dest = 0;
+			else
+				dest = v;
 		}
 		else {
 			dest = v;
@@ -729,6 +731,8 @@ namespace {
 		if (IsOutOfRange(v, logical_min, logical_max)) {
 			if (relative)
 				dest = 0;
+			else
+				dest = v;
 		}
 		else {
 			dest = (int32_t)v;
