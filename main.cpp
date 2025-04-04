@@ -44,14 +44,22 @@ union ButtonsData {
 
 
 struct GamepadData {
-    struct JoyStickData left_joystick;
-    struct JoyStickData right_joystick;
-    union ButtonsData buttons;
-    uint8_t left_trigger;
-    uint8_t right_trigger;
-    uint8_t dpad;
+    struct JoyStickData left_joystick; // 2byte
+    struct JoyStickData right_joystick; // 2byte
+    union ButtonsData buttons; // 14bit
+    uint8_t left_trigger; // 1byte
+    uint8_t right_trigger; // 1byte
+    uint8_t dpad; // 4bit
 };
 
+const uint8_t DPAD_UP = 0;
+const uint8_t DPAD_UP_RIGHT = 1;
+const uint8_t DPAD_RIGHT = 2;
+const uint8_t DPAD_DOWN_RIGHT = 3;
+const uint8_t DPAD_DOWN = 4;
+const uint8_t DPAD_DOWN_LEFT = 5;
+const uint8_t DPAD_LEFT = 6;
+const uint8_t DPAD_UP_LEFT = 7;
 
 static uart_inst_t *UART_ID = uart1;
 
@@ -59,7 +67,7 @@ static uint16_t uart_interval_ms = 250;
 static uint8_t gamepad_dev_addr = 0;
 static uint8_t gamepad_idx = 0;
 static std::unique_ptr<MountedGamepad> p = nullptr;
-static struct GamepadData gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 8 };
+static struct GamepadData gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 0 };
 
 
 static uint8_t crc8(uint8_t *data, uint8_t len) {
@@ -122,7 +130,7 @@ static void core1_main() {
 
         uint8_t frame[DATA_LEN * 2];
         frame[0] = SBTP_HEADER_BYTE;
-        frame[1] = payload_len;
+        frame[1] = 9;
 
         for (uint8_t i = 0; i < payload_len; i++) {
             frame[2 + i] = payload[i];
@@ -291,7 +299,7 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
     gamepad_dev_addr = 0;
     gamepad_idx = 0;
     p.reset();
-    gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 8 };
+    gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 0 };
 }
 
 
@@ -317,10 +325,21 @@ void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t idx, uint8_t const *re
     uint8_t left_trigger = p->axes[hid::GamepadConfig::RX];
     uint8_t right_trigger = p-> axes[hid::GamepadConfig::RY];
 
-    uint8_t dpad = p->axes[hid::GamepadConfig::HAT_SWITCH];
+    uint8_t raw_dpad = p->axes[hid::GamepadConfig::HAT_SWITCH];
 
-    if (7 < dpad) {
-        dpad = 8;
+    uint8_t dpad = 0;
+
+    if (raw_dpad == DPAD_UP || raw_dpad == DPAD_UP_LEFT || raw_dpad == DPAD_UP_RIGHT) {
+        dpad |= 0b0001;
+    }
+    if (raw_dpad == DPAD_DOWN || raw_dpad == DPAD_DOWN_LEFT || raw_dpad == DPAD_DOWN_RIGHT) {
+        dpad |= 0b0010;
+    }
+    if (raw_dpad == DPAD_LEFT || raw_dpad == DPAD_UP_LEFT || raw_dpad == DPAD_DOWN_LEFT) {
+        dpad |= 0b0100;
+    }
+    if (raw_dpad == DPAD_RIGHT || raw_dpad == DPAD_UP_RIGHT || raw_dpad == DPAD_DOWN_RIGHT) {
+        dpad |= 0b1000;
     }
 
     gamepad_data = { left_joystick, right_joystick, buttons, left_trigger, right_trigger, dpad };
