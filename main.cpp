@@ -128,7 +128,7 @@ static void core1_main() {
             }
         }
 
-        uint8_t frame[DATA_LEN * 2];
+        uint8_t frame[DATA_LEN * 2 + 4];
         frame[0] = SBTP_HEADER_BYTE;
         frame[1] = 9;
 
