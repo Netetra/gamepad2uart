@@ -60,6 +60,16 @@ const uint8_t DPAD_DOWN = 4;
 const uint8_t DPAD_DOWN_LEFT = 5;
 const uint8_t DPAD_LEFT = 6;
 const uint8_t DPAD_UP_LEFT = 7;
+const uint16_t SONY_VID = 0x054C;
+const uint16_t PS3_PID = 0x0268;
+
+const uint8_t PS3_INIT_REPORT_SIZE = 4;
+uint8_t PS3_INIT_REPORT[PS3_INIT_REPORT_SIZE] = {
+    0x42, 0x0C, 0x00, 0x00,
+};
+
+static bool is_ps3 = false;
+static bool is_ps3_initialized = false;
 
 static uart_inst_t *UART_ID = uart1;
 
@@ -192,6 +202,10 @@ static void read_gamepad_task() {
         return;
     }
 
+    if (is_ps3 && !is_ps3_initialized) {
+        return;
+    }
+
     if (!tuh_hid_receive_ready(gamepad_dev_addr, gamepad_idx)) {
         return;
     }
@@ -250,10 +264,9 @@ int main() {
     while (true) {
         tuh_task();
         read_gamepad_task();
-        // print_gamepad_data_task();
+        print_gamepad_data_task();
     }
 }
-
 
 void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report, uint16_t desc_len) {
     if (desc_report == NULL && desc_len == 0) {
@@ -280,6 +293,17 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
         return;
     }
 
+    uint16_t vid, pid;
+    tuh_vid_pid_get(dev_addr, &vid, &pid);
+
+    if (vid == SONY_VID && pid == PS3_PID) {
+        if (!tuh_hid_set_report(dev_addr, idx, 0xF4, 3, PS3_INIT_REPORT, PS3_INIT_REPORT_SIZE)) {
+            printf("Error: Failed init PS3 Controller.");
+            return;
+        }
+        is_ps3 = true;
+    }
+
     printf("Info: Gamepad mounted. address: 0x%02X, idx: %u\r\n", dev_addr, idx);
 
     uart_interval_ms = 4;
@@ -287,6 +311,11 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
     gamepad_idx = idx;
 }
 
+void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx, uint8_t report_id, uint8_t report_type, uint16_t len) {
+    if (is_ps3) {
+        is_ps3_initialized = true;
+    }
+}
 
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
     if (gamepad_dev_addr != dev_addr || gamepad_idx != idx) {
@@ -298,6 +327,8 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
     uart_interval_ms = 250;
     gamepad_dev_addr = 0;
     gamepad_idx = 0;
+    is_ps3 = false;
+    is_ps3_initialized = false;
     p.reset();
     gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 0 };
 }
