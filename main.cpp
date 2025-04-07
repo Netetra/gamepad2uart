@@ -264,7 +264,7 @@ int main() {
     while (true) {
         tuh_task();
         read_gamepad_task();
-        print_gamepad_data_task();
+        // print_gamepad_data_task();
     }
 }
 
@@ -298,7 +298,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
 
     if (vid == SONY_VID && pid == PS3_PID) {
         if (!tuh_hid_set_report(dev_addr, idx, 0xF4, 3, PS3_INIT_REPORT, PS3_INIT_REPORT_SIZE)) {
-            printf("Error: Failed init PS3 Controller.");
+            printf("Error: Failed to init PS3 Controller.");
             return;
         }
         is_ps3 = true;
@@ -313,6 +313,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
 
 void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx, uint8_t report_id, uint8_t report_type, uint16_t len) {
     if (is_ps3) {
+        printf("Info: PS3 Controller initialized.");
         is_ps3_initialized = true;
     }
 }
@@ -334,8 +335,42 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
 }
 
 
+void parse_ps3(uint8_t const *report, uint16_t len) {
+    int8_t lx = (int16_t)(report[6]) - 128;
+    int8_t ly = (int16_t)(report[7]) - 128;
+    struct JoyStickData left_joystick = { lx, ly };
+    int8_t rx = (int16_t)(report[8]) - 128;
+    int8_t ry = (int16_t)(report[9]) - 128;
+    struct JoyStickData right_joystick = { rx, ry };
+    uint8_t left_trigger = report[18];
+    uint8_t right_trigger = report[19];
+    union ButtonsData buttons;
+    buttons.raw = 0;
+    buttons.select = (report[2] & 0x01) != 0;
+    buttons.left_joystick = (report[2] & 0x02) != 0;
+    buttons.right_joystick = (report[2] & 0x04) != 0;
+    buttons.start = (report[2] & 0x08) != 0;
+    uint8_t dpad = (report[2] & 0xF0) >> 4;
+    buttons.left_trigger = (report[3] & 0x01) != 0;
+    buttons.right_trigger = (report[3] & 0x02) != 0;
+    buttons.left_shoulder = (report[3] & 0x04) != 0;
+    buttons.right_shoulder = (report[3] & 0x08) != 0;
+    buttons.north = (report[3] & 0x10) != 0;
+    buttons.east = (report[3] & 0x20) != 0;
+    buttons.south = (report[3] & 0x40) != 0;
+    buttons.west = (report[3] & 0x80) != 0;
+    buttons.home = (report[4] & 0x01) != 0;
+    gamepad_data = { left_joystick, right_joystick, buttons, left_trigger, right_trigger, dpad };
+}
+
+
 void tuh_hid_report_received_cb(uint8_t dev_addr, uint8_t idx, uint8_t const *report, uint16_t len) {
     if (gamepad_dev_addr != dev_addr || gamepad_idx != idx) { return; } // ゲームパッド以外のデバイス
+
+    if (is_ps3) {
+        parse_ps3(report, len);
+        return;
+    }
 
     int result = p->parser.Parse(report, len);
     if (result) {
