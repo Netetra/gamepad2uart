@@ -68,6 +68,10 @@ uint8_t PS3_INIT_REPORT[PS3_INIT_REPORT_SIZE] = {
     0x42, 0x0C, 0x00, 0x00,
 };
 
+const uint8_t LED_RED = 17;
+const uint8_t LED_GREEN = 16;
+const uint8_t LED_BLUE = 25;
+
 static bool is_ps3 = false;
 static bool is_ps3_initialized = false;
 
@@ -111,6 +115,8 @@ static void core1_main() {
     const uint8_t SBTP_XOR_BYTE = 0x42;
 
     while (true) {
+        gpio_put(LED_BLUE, false);
+
         uint8_t data[DATA_LEN] = {
             gamepad_data.left_joystick.x,
             gamepad_data.left_joystick.y,
@@ -151,7 +157,9 @@ static void core1_main() {
 
         uart_write_blocking(UART_ID, frame, 4 + payload_len);
 
-        sleep_ms(uart_interval_ms);
+        sleep_ms(uart_interval_ms / 2);
+        gpio_put(LED_BLUE, true);
+        sleep_ms(uart_interval_ms / 2);
     }
 }
 
@@ -212,6 +220,7 @@ static void read_gamepad_task() {
 
     if (!tuh_hid_receive_report(gamepad_dev_addr, gamepad_idx)) {
         printf("Error: cannot request to receive report\r\n");
+        return;
     }
 }
 
@@ -228,6 +237,25 @@ static void print_gamepad_data_task() {
     start_ms += PRINT_INTERVAL_MS;
 
     print_gamepad_data(&gamepad_data);
+}
+
+static void led_blink_task() {
+    const uint16_t BLINK_INTERVAL_MS = 500;
+
+    static uint32_t start_ms = 0;
+
+    if (board_millis() - start_ms < BLINK_INTERVAL_MS / 2) {
+        gpio_put(LED_RED, false);
+    }
+    else {
+        gpio_put(LED_RED, true);
+    }
+
+    if (board_millis() - start_ms < BLINK_INTERVAL_MS) {
+        return;
+    }
+
+    start_ms += BLINK_INTERVAL_MS;
 }
 
 
@@ -253,6 +281,17 @@ int main() {
     uart_set_hw_flow(UART_ID, false, false);
     printf("Info: UART initialized\r\n");
 
+    gpio_init(LED_RED);
+    gpio_init(LED_GREEN);
+    gpio_init(LED_BLUE);
+    gpio_set_dir(LED_RED, GPIO_OUT);
+    gpio_set_dir(LED_GREEN, GPIO_OUT);
+    gpio_set_dir(LED_BLUE, GPIO_OUT);
+    gpio_put(LED_RED, true);
+    gpio_put(LED_GREEN, true);
+    gpio_put(LED_BLUE, true);
+    printf("Info: GPIO initialized.\r\n");
+
     multicore_launch_core1(core1_main);
     printf("Info: Core1 running UART task\r\n");
 
@@ -265,6 +304,7 @@ int main() {
         tuh_task();
         read_gamepad_task();
         // print_gamepad_data_task();
+        led_blink_task();
     }
 }
 
@@ -309,6 +349,8 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t idx, uint8_t const* desc_report,
     uart_interval_ms = 4;
     gamepad_dev_addr = dev_addr;
     gamepad_idx = idx;
+
+    gpio_put(LED_GREEN, false);
 }
 
 void tuh_hid_set_report_complete_cb(uint8_t dev_addr, uint8_t idx, uint8_t report_id, uint8_t report_type, uint16_t len) {
@@ -332,6 +374,8 @@ void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t idx) {
     is_ps3_initialized = false;
     p.reset();
     gamepad_data = { { 0, 0 }, { 0, 0 }, { 0 }, 0, 0, 0 };
+
+    gpio_put(LED_GREEN, true);
 }
 
 
